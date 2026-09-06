@@ -11,7 +11,7 @@ import 'routes.dart';
 import 'theme.dart';
 
 class PapacapimApp extends StatelessWidget {
-  const PapacapimApp({super.key});  
+  const PapacapimApp({super.key});
 
   @override
   Widget build(BuildContext context) {

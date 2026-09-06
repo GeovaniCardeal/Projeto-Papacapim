@@ -3,12 +3,8 @@ import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../core/models/post_model.dart';
 import '../../core/widgets/post_card.dart';
-import '../../data/mock/mock_data.dart';
+import '../../data/api_service.dart';
 
-/// Tela de feed (Parte 1 - Design da interface).
-/// Foco em tela/navegação/widgets: os dados são fixos (mock) e os botões de
-/// ação (curtir, descurtir) não alteram estado — isso fica para a Parte 2,
-/// quando as ações passarão a refletir de fato no back-end.
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
@@ -16,13 +12,19 @@ class FeedScreen extends StatefulWidget {
   State<FeedScreen> createState() => _FeedScreenState();
 }
 
-class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateMixin {
+class _FeedScreenState extends State<FeedScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  List<PostModel> _posts = [];
+  List<PostModel> _seguindoPosts = [];
+  bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _carregarFeed();
   }
 
   @override
@@ -31,19 +33,36 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  Future<void> _carregarFeed() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        ApiService.instance.buscarPosts(),
+        ApiService.instance.buscarPosts(somenteSeguindo: true),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _posts = results[0];
+        _seguindoPosts = results[1];
+      });
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Erro ao carregar o feed.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   void _openProfile(String username) {
     Navigator.of(context).pushNamed(AppRoutes.perfil, arguments: username);
   }
 
-  void _openReply(PostModel post) {
-    Navigator.of(context).pushNamed(AppRoutes.responderPost, arguments: post);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final posts = MockData.feedPosts;
-    final seguindoPosts = posts.where((p) => p.author.isFollowing).toList();
-
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -62,31 +81,69 @@ class _FeedScreenState extends State<FeedScreen> with SingleTickerProviderStateM
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildList(posts),
-          _buildList(seguindoPosts),
+          _buildList(_posts),
+          _buildList(_seguindoPosts),
         ],
       ),
     );
   }
 
   Widget _buildList(List<PostModel> posts) {
-    if (posts.isEmpty) {
-      return const Center(
-        child: Text('Nenhuma postagem por aqui ainda.', style: TextStyle(color: AppColors.textSecondary)),
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return RefreshIndicator(
+        onRefresh: _carregarFeed,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            const SizedBox(height: 180),
+            Center(child: Text(_error!)),
+          ],
+        ),
       );
     }
-    return ListView.builder(
-      itemCount: posts.length,
-      itemBuilder: (context, index) {
-        final post = posts[index];
-        return PostCard(
-          post: post,
-          onTapAuthor: () => _openProfile(post.author.username),
-          onLike: () {},
-          onDislike: () {},
-          onReply: () => _openReply(post),
-        );
-      },
+    if (posts.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _carregarFeed,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 180),
+            Center(
+              child: Text('Nenhuma postagem por aqui ainda.',
+                  style: TextStyle(color: AppColors.textSecondary)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _carregarFeed,
+      color: AppColors.primary,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: posts.length,
+        itemBuilder: (context, index) {
+          final post = posts[index];
+          return PostCard(
+            post: post,
+            onTapAuthor: () => _openProfile(post.author.username),
+            onLike: () => _showNotImplemented(),
+            onReply: () => _showNotImplemented(),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showNotImplemented() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Esta função será implementada na próxima etapa.'),
+      ),
     );
   }
 }

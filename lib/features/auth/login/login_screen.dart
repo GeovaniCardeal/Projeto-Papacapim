@@ -3,6 +3,7 @@ import '../../../app/routes.dart';
 import '../../../app/theme.dart';
 import '../../../core/widgets/app_text_field.dart';
 import '../../../core/widgets/primary_button.dart';
+import '../../../data/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,6 +15,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -22,10 +24,36 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
-    // Parte 1: apenas simula a navegação, sem validar credenciais de verdade.
-    // Na Parte 2 aqui entrará a chamada de autenticação na API.
-    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.main, (route) => false);
+  Future<void> _handleLogin() async {
+    final login = _usernameController.text.trim();
+    final password = _passwordController.text;
+
+    if (login.isEmpty || password.isEmpty) {
+      _showMessage('Preencha usuário e senha.');
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await ApiService.instance.login(login: login, password: password);
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.main,
+        (route) => false,
+      );
+    } on ApiException catch (e) {
+      if (mounted) _showMessage(e.message);
+    } catch (_) {
+      if (mounted) _showMessage('Não foi possível fazer login.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -45,7 +73,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text('Bem-vindo de volta', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+              const Text('Bem-vindo de volta',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               const Text(
                 'Entre no papacapim para ver o que está acontecendo.',
@@ -65,14 +94,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 isPassword: true,
               ),
               const SizedBox(height: 24),
-              PrimaryButton(label: 'Entrar', onPressed: _handleLogin),
+              PrimaryButton(
+                label: _loading ? 'Entrando...' : 'Entrar',
+                onPressed: _loading ? null : _handleLogin,
+              ),
               const SizedBox(height: 20),
               Row(
                 children: const [
                   Expanded(child: Divider(color: AppColors.border)),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('ou', style: TextStyle(color: AppColors.textSecondary)),
+                    child: Text('ou',
+                        style: TextStyle(color: AppColors.textSecondary)),
                   ),
                   Expanded(child: Divider(color: AppColors.border)),
                 ],
@@ -80,28 +113,28 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 20),
               Center(
                 child: GestureDetector(
-                  onTap: () => Navigator.of(context).pushNamed(AppRoutes.cadastro),
+                  onTap: _loading
+                      ? null
+                      : () => Navigator.of(context)
+                          .pushNamed(AppRoutes.cadastro),
                   child: RichText(
                     text: const TextSpan(
-                      style: TextStyle(color: AppColors.textPrimary, fontSize: 14),
+                      style: TextStyle(
+                          color: AppColors.textPrimary, fontSize: 14),
                       children: [
                         TextSpan(text: 'Não tem conta? '),
                         TextSpan(
                           text: 'Criar conta',
-                          style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              const Center(
-                child: Text(
-                  'Use qualquer usuário e senha para entrar.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                ),
-              ),
+              const SizedBox(height: 24),
             ],
           ),
         ),

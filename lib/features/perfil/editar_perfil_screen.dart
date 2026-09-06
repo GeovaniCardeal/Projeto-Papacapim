@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/user_avatar.dart';
-import '../../data/mock/mock_data.dart';
+import '../../data/api_service.dart';
 import 'widgets/foto_perfil_picker.dart';
 
 class EditarPerfilScreen extends StatefulWidget {
@@ -17,11 +19,14 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
   late final TextEditingController _nomeController;
   final _senhaController = TextEditingController();
   File? _fotoSelecionada;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _nomeController = TextEditingController(text: MockData.currentUser.name);
+    _nomeController = TextEditingController(
+      text: ApiService.instance.currentUser?.name ?? '',
+    );
   }
 
   @override
@@ -38,33 +43,105 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
     }
   }
 
-  void _salvar() {
-    // Parte 1: apenas navega de volta. O envio de nome/senha/foto ao
-    // back-end (PATCH no usuário) fica para a Parte 2.
-    Navigator.of(context).pop();
+  Future<void> _salvar() async {
+    if (_nomeController.text.trim().isEmpty) {
+      _showMessage('Informe um nome.');
+      return;
+    }
+
+    if (_senhaController.text.isNotEmpty &&
+        _senhaController.text.length < 6) {
+      _showMessage('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      String? imageData;
+      if (_fotoSelecionada != null) {
+        final bytes = await _fotoSelecionada!.readAsBytes();
+        imageData = base64Encode(bytes);
+      }
+
+      final mudouSenha = _senhaController.text.isNotEmpty;
+
+      await ApiService.instance.alterarUsuario(
+        name: _nomeController.text.trim(),
+        password: mudouSenha ? _senhaController.text : null,
+        passwordConfirmation:
+            mudouSenha ? _senhaController.text : null,
+        imageData: imageData,
+      );
+
+      if (!mounted) return;
+
+      if (mudouSenha) {
+        ApiService.instance.clearSession();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Dados alterados. Como a senha mudou, faça login novamente.'),
+          ),
+        );
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          AppRoutes.login,
+          (route) => false,
+        );
+      } else {
+        _showMessage('Alterações salvas com sucesso.');
+        Navigator.of(context).pop();
+      }
+    } on ApiException catch (e) {
+      if (mounted) _showMessage(e.message);
+    } catch (_) {
+      if (mounted) _showMessage('Não foi possível salvar as alterações.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  void _confirmarExclusao() {
-    showDialog(
+  Future<void> _confirmarExclusao() async {
+    final confirmar = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Excluir conta'),
-        content: const Text('Tem certeza que deseja excluir sua conta? Essa ação não pode ser desfeita.'),
+        content: const Text(
+          'Tem certeza que deseja excluir sua conta? Essa ação não pode ser desfeita.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Cancelar'),
           ),
           TextButton(
-            onPressed: () {
-              // Na Parte 2: chamar o endpoint de exclusão de conta e
-              // redirecionar para a tela de login.
-              Navigator.of(context).pop();
-            },
-            child: const Text('Excluir', style: TextStyle(color: AppColors.danger)),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Excluir',
+                style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
+    );
+
+    if (confirmar != true) return;
+
+    setState(() => _loading = true);
+    try {
+      await ApiService.instance.excluirConta();
+      if (!mounted) return;
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.login,
+        (route) => false,
+      );
+    } on ApiException catch (e) {
+      if (mounted) _showMessage(e.message);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -75,8 +152,10 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
         title: const Text('Editar perfil'),
         actions: [
           TextButton(
-            onPressed: _salvar,
-            child: const Text('Salvar', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600)),
+            onPressed: _loading ? null : _salvar,
+            child: const Text('Salvar',
+                style: TextStyle(
+                    color: AppColors.primary, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -91,19 +170,24 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    UserAvatar(radius: 40, imageFile: _fotoSelecionada),
+                    UserAvatar(
+                      radius: 40,
+                      imageFile: _fotoSelecionada,
+                      imageUrl: ApiService.instance.currentUser?.avatarUrl,
+                    ),
                     Positioned(
                       right: -4,
                       bottom: -4,
                       child: GestureDetector(
-                        onTap: _escolherFoto,
+                        onTap: _loading ? null : _escolherFoto,
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: const BoxDecoration(
                             color: AppColors.primary,
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                          child: const Icon(Icons.camera_alt,
+                              color: Colors.white, size: 18),
                         ),
                       ),
                     ),
@@ -111,7 +195,10 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                 ),
               ),
               const SizedBox(height: 28),
-              AppTextField(label: 'Nome', hint: 'Seu nome', controller: _nomeController),
+              AppTextField(
+                  label: 'Nome',
+                  hint: 'Seu nome',
+                  controller: _nomeController),
               const SizedBox(height: 16),
               AppTextField(
                 label: 'Nova senha',
@@ -123,8 +210,8 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _salvar,
-                  child: const Text('Salvar alterações'),
+                  onPressed: _loading ? null : _salvar,
+                  child: Text(_loading ? 'Salvando...' : 'Salvar alterações'),
                 ),
               ),
               const SizedBox(height: 20),
@@ -133,15 +220,17 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
               SizedBox(
                 width: double.infinity,
                 child: TextButton.icon(
-                  onPressed: _confirmarExclusao,
+                  onPressed: _loading ? null : _confirmarExclusao,
                   style: TextButton.styleFrom(
                     backgroundColor: AppColors.dangerBackground,
                     foregroundColor: AppColors.danger,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   icon: const Icon(Icons.delete_outline),
-                  label: const Text('Excluir conta', style: TextStyle(fontWeight: FontWeight.w600)),
+                  label: const Text('Excluir conta',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
               ),
               const SizedBox(height: 24),

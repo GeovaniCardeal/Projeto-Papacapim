@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
-import '../../data/mock/mock_data.dart';
+import '../../data/api_service.dart';
 import '../busca/busca_screen.dart';
 import '../feed/feed_screen.dart';
 import '../perfil/perfil_screen.dart';
 
-/// Tela "container" que hospeda as 3 abas principais (Feed, Buscar, Perfil)
-/// junto com a bottom navigation bar e o botão flutuante de nova postagem,
-/// exatamente como no protótipo (FAB roxo sobreposto acima da nav bar).
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -25,7 +22,7 @@ class _MainShellState extends State<MainShell> {
         const FeedScreen(),
         const BuscaScreen(),
         PerfilScreen(
-          username: MockData.currentUser.username,
+          username: ApiService.instance.currentUser?.username ?? 'me',
           embedded: true,
           onBackToFeed: _goToFeed,
         ),
@@ -42,7 +39,8 @@ class _MainShellState extends State<MainShell> {
             bottom: 78,
             child: FloatingActionButton(
               backgroundColor: AppColors.primary,
-              onPressed: () => Navigator.of(context).pushNamed(AppRoutes.novaPostagem),
+              onPressed: () => Navigator.of(context)
+                  .pushNamed(AppRoutes.novaPostagem),
               child: const Icon(Icons.add, color: Colors.white),
             ),
           ),
@@ -117,7 +115,8 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppColors.primary : AppColors.textSecondary;
+    final color =
+        selected ? AppColors.primary : AppColors.textSecondary;
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -128,7 +127,8 @@ class _NavItem extends StatelessWidget {
             children: [
               Icon(selected ? activeIcon : icon, color: color),
               const SizedBox(height: 2),
-              Text(label, style: TextStyle(color: color, fontSize: 12)),
+              Text(label,
+                  style: TextStyle(color: color, fontSize: 12)),
             ],
           ),
         ),

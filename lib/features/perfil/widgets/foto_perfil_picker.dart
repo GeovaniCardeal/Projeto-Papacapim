@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../app/theme.dart';
 
-/// Mostra o bottom sheet "Foto de perfil" com as opções de galeria e câmera.
-/// Retorna o [File] escolhido, ou null se o usuário cancelar.
 Future<File?> showFotoPerfilPicker(BuildContext context) {
   return showModalBottomSheet<File?>(
     context: context,
@@ -27,8 +25,6 @@ class _FotoPerfilPickerSheet extends StatelessWidget {
         Navigator.of(context).pop(File(picked.path));
       }
     } catch (_) {
-      // UI de Parte 1: se o dispositivo/simulador não tiver câmera/galeria
-      // disponível, apenas fecha o sheet sem quebrar o app.
       if (context.mounted) Navigator.of(context).pop();
     }
   }

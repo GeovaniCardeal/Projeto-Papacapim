@@ -1,9 +1,7 @@
-import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import '../../app/theme.dart';
 
-/// Avatar circular. Aceita um caminho de arquivo local (File, usado depois de
-/// tirar foto/escolher da galeria) ou cai num ícone padrão quando não há foto.
 class UserAvatar extends StatelessWidget {
   final double radius;
   final File? imageFile;
@@ -18,24 +16,21 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ImageProvider? provider;
+
     if (imageFile != null) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: AppColors.border,
-        backgroundImage: FileImage(imageFile!),
-      );
+      provider = FileImage(imageFile!);
+    } else if (imageUrl != null && imageUrl!.isNotEmpty) {
+      provider = NetworkImage(imageUrl!);
     }
-    if (imageUrl != null) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: AppColors.border,
-        backgroundImage: AssetImage(imageUrl!),
-      );
-    }
+
     return CircleAvatar(
       radius: radius,
       backgroundColor: AppColors.border,
-      child: Icon(Icons.person_outline, size: radius, color: Colors.white),
+      backgroundImage: provider,
+      child: provider == null
+          ? Icon(Icons.person_outline, size: radius, color: Colors.white)
+          : null,
     );
   }
 }
