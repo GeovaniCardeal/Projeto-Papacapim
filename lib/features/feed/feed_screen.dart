@@ -9,14 +9,16 @@ class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
   @override
-  State<FeedScreen> createState() => _FeedScreenState();
+  State<FeedScreen> createState() => FeedScreenState();
 }
 
-class _FeedScreenState extends State<FeedScreen>
+class FeedScreenState extends State<FeedScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final ApiService _apiService = ApiService.instance;
+
   List<PostModel> _posts = [];
-  List<PostModel> _seguindoPosts = [];
+  List<PostModel> _followingPosts = [];
   bool _loading = true;
   String? _error;
 
@@ -24,7 +26,7 @@ class _FeedScreenState extends State<FeedScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _carregarFeed();
+    _loadFeed();
   }
 
   @override
@@ -33,32 +35,134 @@ class _FeedScreenState extends State<FeedScreen>
     super.dispose();
   }
 
-  Future<void> _carregarFeed() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> refreshFeed() => _loadFeed();
+
+  Future<void> _loadFeed() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+
     try {
       final results = await Future.wait([
-        ApiService.instance.buscarPosts(),
-        ApiService.instance.buscarPosts(somenteSeguindo: true),
+        _apiService.buscarPosts(),
+        _apiService.buscarPosts(somenteSeguindo: true),
       ]);
+
       if (!mounted) return;
       setState(() {
         _posts = results[0];
-        _seguindoPosts = results[1];
+        _followingPosts = results[1];
+        _loading = false;
       });
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
     } catch (_) {
-      if (mounted) setState(() => _error = 'Erro ao carregar o feed.');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Não foi possível carregar o feed.';
+      });
+    }
+  }
+
+  Future<void> _openReply(PostModel post) async {
+    final result = await Navigator.of(context).pushNamed(
+      AppRoutes.responderPost,
+      arguments: post,
+    );
+
+    if (result == true) {
+      await _loadFeed();
+    }
+  }
+
+  Future<void> _toggleLike(PostModel post) async {
+    final wasLiked = post.isLiked;
+    final previousCount = post.likesCount;
+
+    setState(() {
+      post.isLiked = !wasLiked;
+      post.likesCount = wasLiked
+          ? (previousCount > 0 ? previousCount - 1 : 0)
+          : previousCount + 1;
+    });
+
+    try {
+      if (wasLiked) {
+        await _apiService.unlikePost(post.id);
+      } else {
+        await _apiService.likePost(post.id);
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        post.isLiked = wasLiked;
+        post.likesCount = previousCount;
+      });
+      _showMessage(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        post.isLiked = wasLiked;
+        post.likesCount = previousCount;
+      });
+      _showMessage('Não foi possível alterar a curtida.');
+    }
+  }
+
+  Future<void> _deletePost(PostModel post) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir postagem'),
+        content: const Text('Tem certeza que deseja excluir esta postagem?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _apiService.deletePost(post.id);
+
+      if (!mounted) return;
+      setState(() {
+        _posts.removeWhere((item) => item.id == post.id);
+        _followingPosts.removeWhere((item) => item.id == post.id);
+      });
+
+      _showMessage('Postagem excluída.');
+    } on ApiException catch (e) {
+      if (mounted) _showMessage(e.message);
+    } catch (_) {
+      if (mounted) _showMessage('Não foi possível excluir a postagem.');
     }
   }
 
   void _openProfile(String username) {
     Navigator.of(context).pushNamed(AppRoutes.perfil, arguments: username);
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -78,71 +182,89 @@ class _FeedScreenState extends State<FeedScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _buildError()
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildList(_posts),
+                    _buildList(_followingPosts),
+                  ],
+                ),
+    );
+  }
+
+  Widget _buildError() {
+    return RefreshIndicator(
+      onRefresh: _loadFeed,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          _buildList(_posts),
-          _buildList(_seguindoPosts),
+          const SizedBox(height: 220),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Não foi possível carregar o feed.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadFeed,
+                    child: const Text('Tentar novamente'),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildList(List<PostModel> posts) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_error != null) {
-      return RefreshIndicator(
-        onRefresh: _carregarFeed,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            const SizedBox(height: 180),
-            Center(child: Text(_error!)),
-          ],
-        ),
-      );
-    }
     if (posts.isEmpty) {
       return RefreshIndicator(
-        onRefresh: _carregarFeed,
+        onRefresh: _loadFeed,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: const [
-            SizedBox(height: 180),
-            Center(
-              child: Text('Nenhuma postagem por aqui ainda.',
-                  style: TextStyle(color: AppColors.textSecondary)),
-            ),
+            SizedBox(height: 240),
+            Center(child: Text('Nenhuma postagem por aqui ainda.')),
           ],
         ),
       );
     }
 
     return RefreshIndicator(
-      onRefresh: _carregarFeed,
+      onRefresh: _loadFeed,
       color: AppColors.primary,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         itemCount: posts.length,
         itemBuilder: (context, index) {
           final post = posts[index];
+          final currentLogin = _apiService.currentUser?.username ?? _apiService.login;
+          final isOwnPost = currentLogin != null && post.author.username == currentLogin;
+
           return PostCard(
             post: post,
             onTapAuthor: () => _openProfile(post.author.username),
-            onLike: () => _showNotImplemented(),
-            onReply: () => _showNotImplemented(),
+            onLike: () => _toggleLike(post),
+            onReply: () => _openReply(post),
+            onDelete: isOwnPost ? () => _deletePost(post) : null,
           );
         },
-      ),
-    );
-  }
-
-  void _showNotImplemented() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Esta função será implementada na próxima etapa.'),
       ),
     );
   }

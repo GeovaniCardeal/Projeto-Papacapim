@@ -27,6 +27,8 @@ class ApiService {
   UserModel? currentUser;
 
   bool get isAuthenticated => _token != null;
+  String? get token => _token;
+  String? get userLogin => _login;
 
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
@@ -243,6 +245,62 @@ class ApiService {
 
   Future<void> deixarDeSeguir(String login) async {
     await _request('DELETE', '/users/$login/followers/me');
+  }
+
+
+  // ==================== PARTE 2 ====================
+
+  Future<void> createPost(String message) async {
+    if (message.trim().isEmpty) {
+      throw ApiException(422, 'A postagem não pode estar vazia.');
+    }
+
+    await _request(
+      'POST',
+      '/posts',
+      body: {
+        'post': {
+          'message': message.trim(),
+        },
+      },
+    );
+  }
+
+  Future<PostModel> replyToPost(int postId, String message) async {
+    if (message.trim().isEmpty) {
+      throw ApiException(422, 'A resposta não pode estar vazia.');
+    }
+
+    final data = await _request(
+      'POST',
+      '/posts/$postId/replies',
+      body: {
+        'reply': {
+          'message': message.trim(),
+        },
+      },
+    );
+
+    return PostModel.fromJson(Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<List<PostModel>> getReplies(int postId) async {
+    final data = await _request('GET', '/posts/$postId/replies');
+    return (data as List)
+        .map((item) => PostModel.fromJson(Map<String, dynamic>.from(item as Map)))
+        .toList();
+  }
+
+  Future<void> deletePost(int postId) async {
+    await _request('DELETE', '/posts/$postId');
+  }
+
+  Future<void> likePost(int postId) async {
+    await _request('POST', '/posts/$postId/likes');
+  }
+
+  Future<void> unlikePost(int postId) async {
+    await _request('DELETE', '/posts/$postId/likes/me');
   }
 
   void clearSession() {
