@@ -112,7 +112,6 @@ class ApiService {
     required String password,
     required String passwordConfirmation,
   }) async {
-    // O controller atual da API recebe estes campos no nível raiz.
     final data = await _request(
       'POST',
       '/users',
@@ -246,9 +245,6 @@ class ApiService {
   Future<void> deixarDeSeguir(String login) async {
     await _request('DELETE', '/users/$login/followers/me');
   }
-
-
-  // ==================== PARTE 2 ====================
 
   Future<void> createPost(String message) async {
     if (message.trim().isEmpty) {

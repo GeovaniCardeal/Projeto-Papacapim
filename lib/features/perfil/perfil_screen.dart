@@ -50,7 +50,6 @@ class _PerfilScreenState extends State<PerfilScreen> {
       try {
         posts = await ApiService.instance.buscarPostsDoUsuario(user.username);
       } catch (_) {
-        // A lista de posts do perfil não é essencial para as funções desta etapa.
       }
       if (!mounted) return;
       setState(() {
